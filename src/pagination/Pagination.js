@@ -85,32 +85,33 @@ export default class Pagination extends PureComponent {
             inactiveDotScale,
             inactiveDotStyle,
             renderDots,
-            tappableDots
+            tappableDots,
+            dotColorByIndex
         } = this.props;
 
         if (renderDots) {
             return renderDots(this._activeDotIndex, dotsLength, this);
         }
 
-        const DefaultDot = <PaginationDot
+        const DefaultDot = (index) => (<PaginationDot
           carouselRef={carouselRef}
           tappable={tappableDots && typeof carouselRef !== 'undefined'}
           activeOpacity={activeOpacity}
           color={dotColor}
           containerStyle={dotContainerStyle}
-          style={dotStyle}
+          style={[dotStyle, { backgroundColor: this.props.dotColorByIndex[index] }]}
           inactiveColor={inactiveDotColor}
           inactiveOpacity={inactiveDotOpacity}
           inactiveScale={inactiveDotScale}
           inactiveStyle={inactiveDotStyle}
-        />;
+        />);
 
         let dots = [];
 
         for (let i = 0; i < dotsLength; i++) {
             const isActive = i === this._activeDotIndex;
             dots.push(React.cloneElement(
-                (isActive ? dotElement : inactiveDotElement) || DefaultDot,
+                (isActive ? dotElement : inactiveDotElement) || DefaultDot(i),
                 {
                     key: `pagination-dot-${i}`,
                     active: i === this._activeDotIndex,
