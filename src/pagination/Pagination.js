@@ -91,25 +91,38 @@ export default class Pagination extends PureComponent {
             inactiveDotStyle,
             renderDots,
             tappableDots,
-            dotColorByIndex
+            dotColorByIndex,
+            dotStyleByIndex
         } = this.props;
 
         if (renderDots) {
             return renderDots(this._activeDotIndex, dotsLength, this);
         }
 
-        const DefaultDot = (index) => (<PaginationDot
-          carouselRef={carouselRef}
-          tappable={tappableDots && typeof carouselRef !== 'undefined'}
-          activeOpacity={activeOpacity}
-          color={dotColor}
-          containerStyle={dotContainerStyle}
-          style={[dotStyle, { backgroundColor: this.props.dotColorByIndex[index] }]}
-          inactiveColor={inactiveDotColor}
-          inactiveOpacity={inactiveDotOpacity}
-          inactiveScale={inactiveDotScale}
-          inactiveStyle={inactiveDotStyle}
-        />);
+        const DefaultDot = (index) => {
+            let newDotStyle = [dotStyle]
+            if(dotStyleByIndex && dotStyleByIndex[index]) {
+                newDotStyle.push(dotStyleByIndex[index]);
+            }
+
+            let newDotColor = dotColor;
+            if(dotColorByIndex && dotColorByIndex[index]) {
+                newDotColor = dotColorByIndex[index];
+            }
+
+            return (<PaginationDot
+              carouselRef={carouselRef}
+              tappable={tappableDots && typeof carouselRef !== 'undefined'}
+              activeOpacity={activeOpacity}
+              color={newDotColor}
+              containerStyle={dotContainerStyle}
+              style={newDotStyle}
+              inactiveColor={inactiveDotColor}
+              inactiveOpacity={inactiveDotOpacity}
+              inactiveScale={inactiveDotScale}
+              inactiveColor={'#8A8A8F'}
+            />);
+        }
 
         let dots = [];
 
