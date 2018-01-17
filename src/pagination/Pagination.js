@@ -120,7 +120,6 @@ export default class Pagination extends PureComponent {
               inactiveColor={inactiveDotColor}
               inactiveOpacity={inactiveDotOpacity}
               inactiveScale={inactiveDotScale}
-              inactiveColor={'#8A8A8F'}
             />);
         }
 
