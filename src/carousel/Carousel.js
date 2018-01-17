@@ -918,6 +918,7 @@ export default class Carousel extends Component {
                 }, 250);
             }
         }
+        onSnapToItem && onSnapToItem(index);
     }
 
     _onSnap (index) {
