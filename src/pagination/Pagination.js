@@ -58,6 +58,10 @@ export default class Pagination extends PureComponent {
                 'You must specify prop `carouselRef` when setting `tappableDots` to `true`'
             );
         }
+
+        this.state = {
+            activeDotIndex: props.activeDotIndex
+        }
     }
 
     _needsRTLAdaptations () {
@@ -66,7 +70,8 @@ export default class Pagination extends PureComponent {
     }
 
     get _activeDotIndex () {
-        const { activeDotIndex, dotsLength } = this.props;
+        const { dotsLength } = this.props;
+        const { activeDotIndex } = this.state;
         return this._needsRTLAdaptations() ? dotsLength - activeDotIndex - 1 : activeDotIndex;
     }
 
@@ -121,6 +126,10 @@ export default class Pagination extends PureComponent {
         }
 
         return dots;
+    }
+
+    setActiveDotIndex(index) {
+        this.setState({activeDotIndex: index})
     }
 
     render () {
