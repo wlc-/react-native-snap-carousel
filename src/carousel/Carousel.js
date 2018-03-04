@@ -2,6 +2,15 @@ import React, { Component } from 'react';
 import { Animated, Easing, FlatList, I18nManager, Platform, ScrollView, View, ViewPropTypes } from 'react-native';
 import PropTypes from 'prop-types';
 import shallowCompare from 'react-addons-shallow-compare';
+import {
+    defaultScrollInterpolator,
+    stackScrollInterpolator,
+    tinderScrollInterpolator,
+    defaultAnimatedStyles,
+    shiftAnimatedStyles,
+    stackAnimatedStyles,
+    tinderAnimatedStyles
+} from '../utils/animations';
 
 const IS_IOS = Platform.OS === 'ios';
 
@@ -25,6 +34,8 @@ export default class Carousel extends Component {
         itemHeight: PropTypes.number, // required for vertical carousel
         sliderWidth: PropTypes.number, // required for horizontal carousel
         sliderHeight: PropTypes.number, // required for vertical carousel
+        activeAnimationType: PropTypes.string,
+        activeAnimationOptions: PropTypes.object,
         activeSlideAlignment: PropTypes.oneOf(['center', 'end', 'start']),
         activeSlideOffset: PropTypes.number,
         apparitionDelay: PropTypes.number,
@@ -34,8 +45,6 @@ export default class Carousel extends Component {
         callbackOffsetMargin: PropTypes.number,
         containerCustomStyle: ViewPropTypes ? ViewPropTypes.style : View.propTypes.style,
         contentContainerCustomStyle: ViewPropTypes ? ViewPropTypes.style : View.propTypes.style,
-        customAnimationType: PropTypes.string,
-        customAnimationOptions: PropTypes.object,
         enableMomentum: PropTypes.bool,
         enableSnap: PropTypes.bool,
         firstItem: PropTypes.number,
@@ -43,9 +52,13 @@ export default class Carousel extends Component {
         inactiveSlideOpacity: PropTypes.number,
         inactiveSlideScale: PropTypes.number,
         inactiveSlideShift: PropTypes.number,
+        layout: PropTypes.oneOf(['default', 'stack', 'tinder']),
+        layoutCardOffset: PropTypes.number,
         lockScrollWhileSnapping: PropTypes.bool,
         loop: PropTypes.bool,
         loopClonesPerSide: PropTypes.number,
+        scrollInterpolator: PropTypes.func,
+        slideInterpolatedStyle: PropTypes.func,
         slideStyle: Animated.View.propTypes.style,
         shouldOptimizeUpdates: PropTypes.bool,
         swipeThreshold: PropTypes.number,
@@ -55,6 +68,8 @@ export default class Carousel extends Component {
     };
 
     static defaultProps = {
+        activeAnimationType: 'timing',
+        activeAnimationOptions: null,
         activeSlideAlignment: 'center',
         activeSlideOffset: 20,
         apparitionDelay: 0,
@@ -64,8 +79,6 @@ export default class Carousel extends Component {
         callbackOffsetMargin: 5,
         containerCustomStyle: {},
         contentContainerCustomStyle: {},
-        customAnimationType: 'timing',
-        customAnimationOptions: null,
         enableMomentum: false,
         enableSnap: true,
         firstItem: 0,
@@ -73,6 +86,7 @@ export default class Carousel extends Component {
         inactiveSlideOpacity: 0.7,
         inactiveSlideScale: 0.9,
         inactiveSlideShift: 0,
+        layout: 'default',
         lockScrollWhileSnapping: false,
         loop: false,
         loopClonesPerSide: 3,
@@ -120,6 +134,8 @@ export default class Carousel extends Component {
         this._onTouchStart = this._onTouchStart.bind(this);
         this._onTouchRelease = this._onTouchRelease.bind(this);
 
+        this._getKeyExtractor = this._getKeyExtractor.bind(this);
+
         // Native driver for scroll events
         const scrollEventConfig = {
             listener: this._onScroll,
@@ -149,8 +165,11 @@ export default class Carousel extends Component {
         if (props.vertical && (!props.sliderHeight || !props.itemHeight)) {
             console.warn('react-native-snap-carousel: You need to specify both `sliderHeight` and `itemHeight` for vertical carousels');
         }
-        if (props.apparitionDelay && !IS_IOS) {
-            console.warn('react-native-snap-carousel: Using `apparitionDelay` is not recommended since it can lead to rendering issues on Android');
+        if (props.apparitionDelay && !IS_IOS && !props.useScrollView) {
+            console.warn('react-native-snap-carousel: Using `apparitionDelay` on Android is not recommended since it can lead to rendering issues');
+        }
+        if (props.customAnimationType || props.customAnimationOptions) {
+            console.warn('react-native-snap-carousel: Props `customAnimationType` and `customAnimationOptions` have been renamed to `activeAnimationType` and `activeAnimationOptions`');
         }
         if (props.onScrollViewScroll) {
             console.warn('react-native-snap-carousel: Prop `onScrollViewScroll` has been removed. Use `onScroll` instead');
@@ -264,7 +283,7 @@ export default class Carousel extends Component {
 
     _needsScrollView () {
         const { useScrollView } = this.props;
-        return useScrollView || !AnimatedFlatList;
+        return useScrollView || !AnimatedFlatList || this._shouldUseStackLayout() || this._shouldUseTinderLayout();
     }
 
     _needsRTLAdaptations () {
@@ -283,13 +302,32 @@ export default class Carousel extends Component {
     }
 
     _shouldAnimateSlides (props = this.props) {
-        const { inactiveSlideOpacity, inactiveSlideScale, inactiveSlideShift } = props;
-        return inactiveSlideOpacity < 1 || inactiveSlideScale < 1 || inactiveSlideShift !== 0;
+        const { inactiveSlideOpacity, inactiveSlideScale, scrollInterpolator, slideInterpolatedStyle } = props;
+        return inactiveSlideOpacity < 1 ||
+            inactiveSlideScale < 1 ||
+            !!scrollInterpolator ||
+            !!slideInterpolatedStyle ||
+            this._shouldUseShiftLayout() ||
+            this._shouldUseStackLayout() ||
+            this._shouldUseTinderLayout();
     }
 
     _shouldUseCustomAnimation () {
-        const { customAnimationOptions } = this.props;
-        return !!customAnimationOptions;
+        const { activeAnimationOptions } = this.props;
+        return !!activeAnimationOptions && !this._shouldUseStackLayout() && !this._shouldUseTinderLayout();
+    }
+
+    _shouldUseShiftLayout () {
+        const { inactiveSlideShift, layout } = this.props;
+        return layout === 'default' && inactiveSlideShift !== 0;
+    }
+
+    _shouldUseStackLayout () {
+        return this.props.layout === 'stack';
+    }
+
+    _shouldUseTinderLayout () {
+        return this.props.layout === 'tinder';
     }
 
     _getCustomData (props = this.props) {
@@ -420,7 +458,7 @@ export default class Carousel extends Component {
     }
 
     _getKeyExtractor (item, index) {
-        return `flatlist-item-${index}`;
+        return this._needsScrollView() ? `scrollview-item-${index}` : `flatlist-item-${index}`;
     }
 
     _getScrollOffset (event) {
@@ -482,7 +520,7 @@ export default class Carousel extends Component {
     }
 
     _initPositionsAndInterpolators (props = this.props) {
-        const { data, itemWidth, itemHeight, vertical } = props;
+        const { data, itemWidth, itemHeight, scrollInterpolator, vertical } = props;
         const sizeRef = vertical ? itemHeight : itemWidth;
 
         if (!data.length) {
@@ -506,41 +544,56 @@ export default class Carousel extends Component {
             } else if (this._shouldUseCustomAnimation()) {
                 animatedValue = new Animated.Value(_index === this._activeItem ? 1 : 0);
             } else {
-                const start = (_index - 1) * sizeRef;
-                const middle = _index * sizeRef;
-                const end = (_index + 1) * sizeRef;
+                let interpolator;
+
+                if (scrollInterpolator) {
+                    interpolator = scrollInterpolator(_index, props);
+                } else if (this._shouldUseStackLayout()) {
+                    interpolator = stackScrollInterpolator(_index, props);
+                } else if (this._shouldUseTinderLayout()) {
+                    interpolator = tinderScrollInterpolator(_index, props);
+                }
+
+                if (!interpolator || !interpolator.inputRange || !interpolator.outputRange) {
+                    interpolator = defaultScrollInterpolator(_index, props);
+                }
+
                 animatedValue = this._scrollPos.interpolate({
-                    inputRange: [start, middle, end],
-                    outputRange: [0, 1, 0],
+                    ...interpolator,
                     extrapolate: 'clamp'
                 });
             }
 
-            interpolators.push({
-                opacity: animatedValue,
-                scale: animatedValue
-            });
+            interpolators.push(animatedValue);
         });
 
         this.setState({ interpolators });
     }
 
     _getSlideAnimation (index, toValue) {
-        const { customAnimationType, customAnimationOptions } = this.props;
+        const { interpolators } = this.state;
+        const { activeAnimationType, activeAnimationOptions } = this.props;
+
+        const animatedValue = interpolators && interpolators[index];
+
+        if (!animatedValue && animatedValue !== 0) {
+            return false;
+        }
+
         const animationCommonOptions = {
             isInteraction: false,
             useNativeDriver: true,
-            ...customAnimationOptions,
+            ...activeAnimationOptions,
             toValue: toValue
         };
 
         return Animated.parallel([
             Animated['timing'](
-                this.state.interpolators[index].opacity,
+                animatedValue,
                 { ...animationCommonOptions, easing: Easing.linear }
             ),
-            Animated[customAnimationType](
-                this.state.interpolators[index].scale,
+            Animated[activeAnimationType](
+                animatedValue,
                 { ...animationCommonOptions }
             )
         ]);
@@ -1011,6 +1064,67 @@ export default class Carousel extends Component {
         this._scrollTo(scrollPosition + scrollOffset, false);
     }
 
+    _getSlideInterpolatedStyle (index, animatedValue) {
+        const { layoutCardOffset, slideInterpolatedStyle } = this.props;
+
+        if (slideInterpolatedStyle) {
+            return slideInterpolatedStyle(index, animatedValue, this.props);
+        } else if (this._shouldUseTinderLayout()) {
+            return tinderAnimatedStyles(index, animatedValue, this.props, layoutCardOffset);
+        } else if (this._shouldUseStackLayout()) {
+            return stackAnimatedStyles(index, animatedValue, this.props, layoutCardOffset);
+        } else if (this._shouldUseShiftLayout()) {
+            return shiftAnimatedStyles(index, animatedValue, this.props);
+        } else {
+            return defaultAnimatedStyles(index, animatedValue, this.props);
+        }
+    }
+
+    _renderItem ({ item, index }) {
+        const { interpolators } = this.state;
+        const {
+            hasParallaxImages,
+            itemWidth,
+            itemHeight,
+            keyExtractor,
+            renderItem,
+            sliderHeight,
+            sliderWidth,
+            slideStyle,
+            vertical
+        } = this.props;
+
+        const animatedValue = interpolators && interpolators[index];
+
+        if (!animatedValue && animatedValue !== 0) {
+            return false;
+        }
+
+        const animate = this._shouldAnimateSlides();
+        const Component = animate ? Animated.View : View;
+        const animatedStyle = animate ? this._getSlideInterpolatedStyle(index, animatedValue) : {};
+
+        const parallaxProps = hasParallaxImages ? {
+            scrollPosition: this._scrollPos,
+            carouselRef: this._scrollComponent,
+            vertical,
+            sliderWidth,
+            sliderHeight,
+            itemWidth,
+            itemHeight
+        } : undefined;
+
+        const specificProps = this._needsScrollView() ? {
+            key: keyExtractor ? keyExtractor(item, index) : this._getKeyExtractor(item, index),
+        } : {};
+
+        return (
+            <Component style={[slideStyle, animatedStyle]} pointerEvents={'box-none'} {...specificProps}>
+                { renderItem({ item, index }, parallaxProps) }
+            </Component>
+        );
+    }
+
     _getComponentOverridableProps () {
         const {
             enableMomentum,
@@ -1111,73 +1225,6 @@ export default class Carousel extends Component {
             onLayout: this._onLayout,
             ...specificProps
         };
-    }
-
-    _renderItem ({ item, index }) {
-        const { interpolators } = this.state;
-        const {
-            inactiveSlideShift,
-            hasParallaxImages,
-            inactiveSlideScale,
-            inactiveSlideOpacity,
-            itemWidth,
-            itemHeight,
-            renderItem,
-            sliderHeight,
-            sliderWidth,
-            slideStyle,
-            vertical
-        } = this.props;
-
-        const animatedValue = interpolators && interpolators[index];
-
-        if (!animatedValue ||
-            (!animatedValue.opacity && animatedValue.opacity !== 0) ||
-            (!animatedValue.scale && animatedValue.scale !== 0)) {
-            return false;
-        }
-
-        const animate = this._shouldAnimateSlides();
-        const Component = animate ? Animated.View : View;
-        const translateProp = vertical ? 'translateX' : 'translateY';
-
-        const animatedStyle = animate ? {
-            opacity: animatedValue.opacity.interpolate({
-                inputRange: [0, 1],
-                outputRange: [inactiveSlideOpacity, 1]
-            }),
-            transform: [{
-                scale: animatedValue.scale.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [inactiveSlideScale, 1]
-                })
-            }, {
-                [translateProp]: animatedValue.opacity.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [inactiveSlideShift, 0]
-                })
-            }]
-        } : {};
-
-        const parallaxProps = hasParallaxImages ? {
-            scrollPosition: this._scrollPos,
-            carouselRef: this._scrollComponent,
-            vertical,
-            sliderWidth,
-            sliderHeight,
-            itemWidth,
-            itemHeight
-        } : undefined;
-
-        const specificProps = this._needsScrollView() ? {
-            key: `scrollview-item-${index}`
-        } : {};
-
-        return (
-            <Component style={[slideStyle, animatedStyle]} pointerEvents={'box-none'} {...specificProps}>
-                { renderItem({ item, index }, parallaxProps) }
-            </Component>
-        );
     }
 
     render () {
